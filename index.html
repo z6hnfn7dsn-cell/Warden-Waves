@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Warden Waves</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="ui"></div>
+  <button id="pauseBtn" onclick="togglePause()">Pause</button>
+
+  <div id="menu" class="screen">
+    <h1>Warden Waves</h1>
+    <p>Level 1: The Yard</p>
+    <p>Survive 10 waves. No health drops. Every hit matters.</p>
+    <p>Permanent Contraband: <span id="savedMoney">0</span></p>
+    <button onclick="startGame()">Start Run</button>
+    <button onclick="showCell()">Upgrade Cell</button>
+  </div>
+
+  <div id="choice" class="screen hidden">
+    <h1 id="choiceTitle">Wave Cleared</h1>
+    <p>Choose one Contraband Find:</p>
+    <div id="choiceList"></div>
+  </div>
+
+  <div id="cell" class="screen hidden">
+    <h1>Your Cell</h1>
+    <p>Permanent Contraband: <span id="cellMoney">0</span></p>
+    <div id="cellList"></div>
+    <button onclick="backToMenu()">Back</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
