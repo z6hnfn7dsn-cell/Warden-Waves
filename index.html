@@ -13,32 +13,31 @@
   <div id="menu" class="screen">
     <h1>Warden Waves</h1>
     <h2 id="dayText">Day 1</h2>
-    <p>Cell Block: <span id="blockText">1</span></p>
+    <p>Current Area: <b>Solitary</b></p>
     <p>Contraband: <span id="savedMoney">0</span></p>
-    <p>Knowledge: <span id="knowledgeText">0/3</span></p>
     <button onclick="startGame()">Attempt Escape</button>
     <button onclick="showCell()">Your Cell</button>
-    <button onclick="showJournal()">Prison Journal</button>
     <button onclick="resetProgress()">Reset Progress</button>
-  </div>
-
-  <div id="choice" class="screen hidden">
-    <h1 id="choiceTitle">Wave Cleared</h1>
-    <p>Choose one Contraband Find:</p>
-    <div id="choiceList"></div>
   </div>
 
   <div id="cell" class="screen hidden">
     <h1>Your Cell</h1>
     <p>Contraband: <span id="cellMoney">0</span></p>
+    <button onclick="showWeapons()">Weapons</button>
     <div id="cellList"></div>
     <button onclick="backToMenu()">Back</button>
   </div>
 
-  <div id="journal" class="screen hidden">
-    <h1>Prison Journal</h1>
-    <div id="journalText"></div>
-    <button onclick="backToMenu()">Back</button>
+  <div id="weapons" class="screen hidden">
+    <h1>Weapons</h1>
+    <div id="weaponList"></div>
+    <button onclick="showCell()">Back to Cell</button>
+  </div>
+
+  <div id="choice" class="screen hidden">
+    <h1 id="choiceTitle">Wave Cleared</h1>
+    <p>Choose one find:</p>
+    <div id="choiceList"></div>
   </div>
 
   <script src="game.js"></script>
