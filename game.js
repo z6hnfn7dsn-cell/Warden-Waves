@@ -1,45 +1,543 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Warden Waves</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <canvas id="game"></canvas>
-  <div id="ui"></div>
-  <button id="pauseBtn" onclick="togglePause()">Pause</button>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const ui=document.getElementById("ui");
+const menu=document.getElementById("menu");
+const cell=document.getElementById("cell");
+const weapons=document.getElementById("weapons");
+const choice=document.getElementById("choice");
+const cellList=document.getElementById("cellList");
+const weaponList=document.getElementById("weaponList");
+const choiceList=document.getElementById("choiceList");
+const pauseBtn=document.getElementById("pauseBtn");
 
-  <div id="menu" class="screen">
-    <h1>Warden Waves</h1>
-    <h2 id="dayText">Day 1</h2>
-    <p>Current Area: <b>Solitary</b></p>
-    <p>Contraband: <span id="savedMoney">0</span></p>
-    <button onclick="startGame()">Attempt Escape</button>
-    <button onclick="showCell()">Your Cell</button>
-    <button onclick="resetProgress()">Reset Progress</button>
-  </div>
+const stickBase=document.createElement("div");
+stickBase.id="stickBase";
+const stickKnob=document.createElement("div");
+stickKnob.id="stickKnob";
+stickBase.appendChild(stickKnob);
+document.body.appendChild(stickBase);
 
-  <div id="cell" class="screen hidden">
-    <h1>Your Cell</h1>
-    <p>Contraband: <span id="cellMoney">0</span></p>
-    <button onclick="showWeapons()">Weapons</button>
-    <div id="cellList"></div>
-    <button onclick="backToMenu()">Back</button>
-  </div>
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+resize();addEventListener("resize",resize);
 
-  <div id="weapons" class="screen hidden">
-    <h1>Weapons</h1>
-    <div id="weaponList"></div>
-    <button onclick="showCell()">Back to Cell</button>
-  </div>
+const blankSave={
+  contraband:0,
+  days:1,
+  bed:0,
+  workout:0,
+  shivLevel:0,
+  batonUnlocked:false,
+  batonPurchased:false,
+  batonLevel:0,
+  chosenWeapon:"shiv",
+  clearedSolitary:false
+};
 
-  <div id="choice" class="screen hidden">
-    <h1 id="choiceTitle">Wave Cleared</h1>
-    <p>Choose one find:</p>
-    <div id="choiceList"></div>
-  </div>
+let save=JSON.parse(localStorage.getItem("wardenSolitarySave")||JSON.stringify(blankSave));
+function saveGame(){localStorage.setItem("wardenSolitarySave",JSON.stringify(save))}
+function resetProgress(){if(confirm("Erase your prison record?")){localStorage.removeItem("wardenSolitarySave");location.reload()}}
 
-  <script src="game.js"></script>
-</body>
-</html>
+let keys={},enemies=[],bullets=[],drops=[];
+let running=false,paused=false,inBoss=false,wave=1,kills=0,neededKills=20,message="";
+let boss=null;
+let joy={active:false,x:0,y:0,sx:0,sy:0};
+
+let player={
+  x:innerWidth/2,y:innerHeight/2,
+  hp:100,maxHp:100,speed:4,damage:12,
+  contraband:0,attackTimer:0,attackSpeed:22,weapon:"shiv"
+};
+
+function updateMenu(){
+  document.getElementById("dayText").textContent="Day "+save.days;
+  document.getElementById("savedMoney").textContent=save.contraband;
+}
+updateMenu();
+
+function applyStats(){
+  player.maxHp=100+save.bed*15;
+  player.hp=player.maxHp;
+  player.speed=4+save.workout*.35;
+  player.weapon=save.chosenWeapon;
+
+  if(player.weapon==="shiv"){
+    player.damage=12+save.shivLevel*5;
+    player.attackSpeed=20;
+  }else{
+    player.damage=9+save.batonLevel*4;
+    player.attackSpeed=26;
+  }
+}
+
+function startGame(){
+  menu.classList.add("hidden");
+  cell.classList.add("hidden");
+  weapons.classList.add("hidden");
+  choice.classList.add("hidden");
+  running=true;paused=false;inBoss=false;boss=null;
+  pauseBtn.textContent="Pause";
+  wave=1;kills=0;enemies=[];bullets=[];drops=[];
+  player.x=innerWidth/2;player.y=innerHeight/2;
+  player.contraband=0;
+  applyStats();
+  spawnWave();
+}
+
+function togglePause(){if(!running)return;paused=!paused;pauseBtn.textContent=paused?"Resume":"Pause"}
+
+function spawnWave(){
+  inBoss=false;
+  neededKills=18+wave*12;
+  kills=0;enemies=[];bullets=[];drops=[];
+  message="Solitary Wave "+wave+"/3";
+  for(let i=0;i<8+wave*3;i++)spawnEnemy();
+}
+
+function spawnEnemy(){
+  let side=Math.floor(Math.random()*4),x,y;
+  if(side===0){x=-40;y=Math.random()*innerHeight}
+  if(side===1){x=innerWidth+40;y=Math.random()*innerHeight}
+  if(side===2){x=Math.random()*innerWidth;y=-40}
+  if(side===3){x=Math.random()*innerWidth;y=innerHeight+40}
+  let tough=Math.random()<wave*.12;
+  enemies.push({
+    x,y,w:tough?34:24,h:tough?42:32,
+    hp:tough?50+wave*12:20+wave*7,
+    speed:tough?1.2+wave*.08:1.8+wave*.12,
+    damage:tough?18:9,
+    tough
+  });
+}
+
+function spawnBoss(){
+  enemies=[];bullets=[];drops=[];
+  inBoss=true;
+  message="Boss: Baton Guard";
+  boss={
+    x:innerWidth/2,
+    y:90,
+    w:46,h:58,
+    hp:450,maxHp:450,
+    speed:1.45,
+    damage:14,
+    angle:0,
+    batonRange:62,
+    swingTimer:0
+  };
+}
+
+function update(){
+  if(!running||paused)return;
+
+  let mx=0,my=0;
+  if(keys.w||keys.ArrowUp)my--;
+  if(keys.s||keys.ArrowDown)my++;
+  if(keys.a||keys.ArrowLeft)mx--;
+  if(keys.d||keys.ArrowRight)mx++;
+  if(joy.active){mx=joy.x;my=joy.y}
+  let len=Math.hypot(mx,my);if(len){mx/=len;my/=len}
+
+  player.x+=mx*player.speed;
+  player.y+=my*player.speed;
+  player.x=Math.max(24,Math.min(innerWidth-24,player.x));
+  player.y=Math.max(34,Math.min(innerHeight-24,player.y));
+
+  player.attackTimer--;
+  if(player.attackTimer<=0){attack();player.attackTimer=player.attackSpeed}
+
+  for(let b of bullets){b.x+=b.vx;b.y+=b.vy;b.life--}
+  bullets=bullets.filter(b=>b.life>0&&!b.dead);
+
+  if(inBoss) updateBoss();
+  else updateEnemies();
+
+  for(let d of drops){
+    if(dist(player,d)<42){player.contraband+=d.value;d.dead=true}
+  }
+  drops=drops.filter(d=>!d.dead);
+}
+
+function updateEnemies(){
+  while(enemies.length<10+wave*2&&kills<neededKills)spawnEnemy();
+
+  for(let e of enemies){
+    let a=Math.atan2(player.y-e.y,player.x-e.x);
+    e.x+=Math.cos(a)*e.speed;
+    e.y+=Math.sin(a)*e.speed;
+    if(dist(player,e)<28){player.hp-=e.damage*.04;if(player.hp<=0)gameOver(false,"The guards beat you back into solitary.")}
+  }
+
+  hitTargets(enemies);
+
+  for(let i=enemies.length-1;i>=0;i--){
+    if(enemies[i].hp<=0){
+      drops.push({x:enemies[i].x,y:enemies[i].y,value:1});
+      enemies.splice(i,1);
+      kills++;
+    }
+  }
+
+  if(kills>=neededKills){
+    running=false;
+    if(wave>=3) showWaveChoice(true);
+    else showWaveChoice(false);
+  }
+}
+
+function updateBoss(){
+  let a=Math.atan2(player.y-boss.y,player.x-boss.x);
+  boss.x+=Math.cos(a)*boss.speed;
+  boss.y+=Math.sin(a)*boss.speed;
+  boss.angle+=.12;
+
+  if(dist(player,boss)<38){
+    player.hp-=boss.damage*.045;
+  }
+
+  let batonX=boss.x+Math.cos(boss.angle)*boss.batonRange;
+  let batonY=boss.y+Math.sin(boss.angle)*boss.batonRange;
+
+  if(Math.hypot(player.x-batonX,player.y-batonY)<28){
+    player.hp-=.85;
+    let push=Math.atan2(player.y-batonY,player.x-batonX);
+    player.x+=Math.cos(push)*4;
+    player.y+=Math.sin(push)*4;
+  }
+
+  for(let b of bullets){
+    if(!b.dead&&Math.hypot(b.x-boss.x,b.y-boss.y)<38){
+      boss.hp-=b.damage;
+      b.dead=true;
+    }
+  }
+
+  if(player.hp<=0)gameOver(false,"The Baton Guard knocks you cold.");
+
+  if(boss.hp<=0){
+    save.batonUnlocked=true;
+    save.clearedSolitary=true;
+    save.days++;
+    save.contraband+=player.contraband+20;
+    saveGame();
+    running=false;
+    menu.classList.remove("hidden");
+    menu.innerHTML=`
+      <h1>Solitary Cleared</h1>
+      <p>You beat the Baton Guard.</p>
+      <p>The baton can now be purchased in your cell.</p>
+      <p>Contraband earned: ${player.contraband+20}</p>
+      <button onclick="location.reload()">Back to Cell</button>
+    `;
+  }
+}
+
+function hitTargets(list){
+  for(let b of bullets){
+    for(let e of list){
+      if(!b.dead&&dist(b,e)<24){
+        e.hp-=b.damage;
+        b.dead=true;
+      }
+    }
+  }
+}
+
+function attack(){
+  if(player.weapon==="shiv") throwShiv();
+  else swingBaton();
+}
+
+function throwShiv(){
+  let target=null,best=999999;
+  for(let e of enemies){let d=dist(player,e);if(d<best){best=d;target=e}}
+  if(inBoss&&boss){let d=dist(player,boss);if(d<best){best=d;target=boss}}
+  if(!target)return;
+  let a=Math.atan2(target.y-player.y,target.x-player.x);
+  bullets.push({x:player.x,y:player.y,r:5,vx:Math.cos(a)*9,vy:Math.sin(a)*9,damage:player.damage,life:70});
+}
+
+function swingBaton(){
+  let range=55+save.batonLevel*5;
+  for(let e of enemies){
+    if(dist(player,e)<range)e.hp-=player.damage;
+  }
+  if(inBoss&&boss&&dist(player,boss)<range)boss.hp-=player.damage;
+  message="Baton swing!";
+}
+
+const finds=[
+  {name:"Sharpen Shiv",text:"+5 damage this run",go:()=>player.damage+=5},
+  {name:"Quick Hands",text:"Attack faster",go:()=>player.attackSpeed=Math.max(10,player.attackSpeed-3)},
+  {name:"Prison Legs",text:"+0.5 speed",go:()=>player.speed+=.5},
+  {name:"Tough Skin",text:"+25 max HP and heal",go:()=>{player.maxHp+=25;player.hp+=25}},
+  {name:"Hidden Stash",text:"+12 Contraband",go:()=>player.contraband+=12}
+];
+
+function showWaveChoice(afterThird){
+  choice.classList.remove("hidden");
+  document.getElementById("choiceTitle").textContent=afterThird?"Boss Door Found":"Wave "+wave+" Cleared";
+  choiceList.innerHTML="";
+
+  if(afterThird){
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML="<h2>Open the Boss Door</h2><p>The Baton Guard waits outside solitary.</p>";
+    let btn=document.createElement("button");
+    btn.textContent="Fight Boss";
+    btn.onclick=()=>{choice.classList.add("hidden");running=true;spawnBoss()};
+    div.appendChild(btn);
+    choiceList.appendChild(div);
+    return;
+  }
+
+  let picks=[...finds].sort(()=>Math.random()-.5).slice(0,3);
+  for(let f of picks){
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML="<h2>"+f.name+"</h2><p>"+f.text+"</p>";
+    let btn=document.createElement("button");
+    btn.textContent="Choose";
+    btn.onclick=()=>{f.go();choice.classList.add("hidden");wave++;running=true;spawnWave()};
+    div.appendChild(btn);
+    choiceList.appendChild(div);
+  }
+}
+
+function gameOver(won,text){
+  running=false;
+  save.days++;
+  save.contraband+=player.contraband;
+  saveGame();
+  menu.classList.remove("hidden");
+  menu.innerHTML=`
+    <h1>Back to Solitary</h1>
+    <p>${text}</p>
+    <p>Contraband earned: ${player.contraband}</p>
+    <p>Total Contraband: ${save.contraband}</p>
+    <button onclick="location.reload()">Continue</button>
+  `;
+}
+
+function showCell(){
+  menu.classList.add("hidden");
+  weapons.classList.add("hidden");
+  cell.classList.remove("hidden");
+  renderCell();
+}
+
+function renderCell(){
+  document.getElementById("cellMoney").textContent=save.contraband;
+  cellList.innerHTML="";
+  addUpgrade("Bed","Start with +15 HP per level","bed",20);
+  addUpgrade("Workout Corner","Move faster each level","workout",25);
+  addWeaponUpgrade("Shiv Training","Improve shiv damage","shivLevel",30);
+}
+
+function addUpgrade(name,text,id,baseCost){
+  let lvl=save[id],cost=baseCost*(lvl+1);
+  let div=document.createElement("div");
+  div.className="card";
+  div.innerHTML="<h2>"+name+" Lv."+lvl+"</h2><p>"+text+"</p><p>Cost: "+cost+"</p>";
+  let btn=document.createElement("button");
+  btn.textContent="Upgrade";
+  btn.onclick=()=>{if(save.contraband>=cost){save.contraband-=cost;save[id]++;saveGame();renderCell();updateMenu()}};
+  div.appendChild(btn);
+  cellList.appendChild(div);
+}
+
+function addWeaponUpgrade(name,text,id,baseCost){
+  addUpgrade(name,text,id,baseCost);
+}
+
+function showWeapons(){
+  cell.classList.add("hidden");
+  weapons.classList.remove("hidden");
+  renderWeapons();
+}
+
+function renderWeapons(){
+  weaponList.innerHTML="";
+  weaponCard("Shiv","Fast ranged weapon. Weak early, dangerous when upgraded.","shiv",true,save.shivLevel,0);
+
+  if(save.batonUnlocked){
+    weaponCard("Baton","Short-range swing. Hits groups and knocks guards back.","baton",save.batonPurchased,save.batonLevel,60);
+  }else{
+    let d=document.createElement("div");
+    d.className="card locked";
+    d.innerHTML="<h2>Baton</h2><p>Defeat the Baton Guard in Solitary to unlock.</p>";
+    weaponList.appendChild(d);
+  }
+}
+
+function weaponCard(name,text,id,purchased,lvl,cost){
+  let d=document.createElement("div");
+  d.className="card";
+  d.innerHTML="<h2>"+name+"</h2><p>"+text+"</p><p>Level: "+lvl+"</p>";
+  if(!purchased){
+    let b=document.createElement("button");
+    b.textContent="Purchase "+cost;
+    b.onclick=()=>{
+      if(save.contraband>=cost){
+        save.contraband-=cost;
+        save.batonPurchased=true;
+        save.chosenWeapon="baton";
+        saveGame();
+        renderWeapons();
+      }
+    };
+    d.appendChild(b);
+  }else{
+    let select=document.createElement("button");
+    select.textContent=save.chosenWeapon===id?"Selected":"Select";
+    select.onclick=()=>{save.chosenWeapon=id;saveGame();renderWeapons()};
+    d.appendChild(select);
+
+    let up=document.createElement("button");
+    let upgradeCost=id==="shiv"?30*(save.shivLevel+1):40*(save.batonLevel+1);
+    up.textContent="Upgrade "+upgradeCost;
+    up.onclick=()=>{
+      if(save.contraband>=upgradeCost){
+        save.contraband-=upgradeCost;
+        if(id==="shiv")save.shivLevel++;
+        if(id==="baton")save.batonLevel++;
+        saveGame();
+        renderWeapons();
+      }
+    };
+    d.appendChild(up);
+  }
+  weaponList.appendChild(d);
+}
+
+function backToMenu(){
+  cell.classList.add("hidden");
+  weapons.classList.add("hidden");
+  menu.classList.remove("hidden");
+  updateMenu();
+}
+
+function draw(){
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  drawSolitary();
+  drawPlayer();
+  for(let e of enemies)drawEnemy(e);
+  if(boss)drawBoss();
+  for(let b of bullets)drawBullet(b);
+  for(let d of drops)drawContraband(d);
+
+  ui.innerHTML=`HP: ${Math.ceil(player.hp)} / ${player.maxHp}<br>
+  Area: Solitary<br>
+  ${inBoss?"Boss Fight":"Wave: "+wave+"/3"}<br>
+  ${inBoss&&boss?"Boss HP: "+Math.ceil(boss.hp)+"/"+boss.maxHp:"Kills: "+kills+"/"+neededKills}<br>
+  Weapon: ${player.weapon}<br>
+  Run Contraband: ${player.contraband}<br>${message}`;
+
+  if(paused){
+    ctx.fillStyle="rgba(0,0,0,.55)";
+    ctx.fillRect(0,0,innerWidth,innerHeight);
+    ctx.fillStyle="white";
+    ctx.font="bold 42px Arial";
+    ctx.textAlign="center";
+    ctx.fillText("PAUSED",innerWidth/2,innerHeight/2);
+    ctx.textAlign="left";
+  }
+}
+
+function drawSolitary(){
+  ctx.fillStyle="#1f1f22";
+  ctx.fillRect(0,0,innerWidth,innerHeight);
+  ctx.strokeStyle="#3a3a3d";
+  for(let x=0;x<innerWidth;x+=55){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,innerHeight);ctx.stroke()}
+  for(let y=0;y<innerHeight;y+=55){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(innerWidth,y);ctx.stroke()}
+  ctx.fillStyle="#555";
+  ctx.fillRect(0,0,innerWidth,18);
+  ctx.fillRect(0,innerHeight-18,innerWidth,18);
+  ctx.fillRect(0,0,18,innerHeight);
+  ctx.fillRect(innerWidth-18,0,18,innerHeight);
+  ctx.strokeStyle="#999";
+  for(let x=28;x<innerWidth;x+=38){
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,55);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,innerHeight);ctx.lineTo(x,innerHeight-55);ctx.stroke();
+  }
+}
+
+function drawPlayer(){
+  ctx.fillStyle="#ff8c00";
+  ctx.fillRect(player.x-13,player.y-10,26,28);
+  ctx.fillStyle="#f0c08c";
+  ctx.fillRect(player.x-9,player.y-26,18,18);
+  ctx.fillStyle="#111";
+  ctx.fillRect(player.x-5,player.y-20,3,3);
+  ctx.fillRect(player.x+4,player.y-20,3,3);
+}
+
+function drawEnemy(e){
+  ctx.fillStyle=e.tough?"#6f35b5":"#2f6fbd";
+  ctx.fillRect(e.x-e.w/2,e.y-e.h/2,e.w,e.h);
+  ctx.fillStyle="#f0c08c";
+  ctx.fillRect(e.x-8,e.y-e.h/2-13,16,15);
+}
+
+function drawBoss(){
+  ctx.fillStyle="#9b1c31";
+  ctx.fillRect(boss.x-boss.w/2,boss.y-boss.h/2,boss.w,boss.h);
+  ctx.fillStyle="#f0c08c";
+  ctx.fillRect(boss.x-13,boss.y-boss.h/2-18,26,20);
+
+  let bx=boss.x+Math.cos(boss.angle)*boss.batonRange;
+  let by=boss.y+Math.sin(boss.angle)*boss.batonRange;
+  ctx.strokeStyle="#ddd";
+  ctx.lineWidth=7;
+  ctx.beginPath();
+  ctx.moveTo(boss.x,boss.y);
+  ctx.lineTo(bx,by);
+  ctx.stroke();
+  ctx.lineWidth=1;
+
+  ctx.fillStyle="#111";
+  ctx.fillRect(20,40,innerWidth-40,14);
+  ctx.fillStyle="#d62828";
+  ctx.fillRect(20,40,(innerWidth-40)*(boss.hp/boss.maxHp),14);
+}
+
+function drawBullet(b){
+  ctx.fillStyle="#ffd166";
+  ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+}
+
+function drawContraband(d){
+  ctx.fillStyle="#06d6a0";
+  ctx.fillRect(d.x-7,d.y-7,14,14);
+}
+
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+addEventListener("keydown",e=>keys[e.key]=true);
+addEventListener("keyup",e=>keys[e.key]=false);
+
+canvas.addEventListener("touchstart",e=>{
+  let t=e.touches[0];
+  joy.active=true;joy.sx=t.clientX;joy.sy=t.clientY;
+  stickBase.style.display="block";
+  stickBase.style.left=(joy.sx-60)+"px";
+  stickBase.style.top=(joy.sy-60)+"px";
+},{passive:false});
+
+canvas.addEventListener("touchmove",e=>{
+  e.preventDefault();
+  let t=e.touches[0];
+  let dx=t.clientX-joy.sx,dy=t.clientY-joy.sy;
+  let len=Math.hypot(dx,dy),max=45;
+  if(len>max){dx=dx/len*max;dy=dy/len*max}
+  joy.x=dx/max;joy.y=dy/max;
+  stickKnob.style.left=(38+dx)+"px";
+  stickKnob.style.top=(38+dy)+"px";
+},{passive:false});
+
+canvas.addEventListener("touchend",()=>{
+  joy.active=false;joy.x=0;joy.y=0;
+  stickBase.style.display="none";
+});
+
+function loop(){update();draw();requestAnimationFrame(loop)}
+loop();
