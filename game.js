@@ -21,16 +21,9 @@ function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
 resize();addEventListener("resize",resize);
 
 const blankSave={
-  contraband:0,
-  days:1,
-  bed:0,
-  workout:0,
-  shivLevel:0,
-  batonUnlocked:false,
-  batonPurchased:false,
-  batonLevel:0,
-  chosenWeapon:"shiv",
-  clearedSolitary:false
+  contraband:0,days:1,bed:0,workout:0,
+  shivLevel:0,batonUnlocked:false,batonPurchased:false,batonLevel:0,
+  chosenWeapon:"shiv",clearedSolitary:false
 };
 
 let save=JSON.parse(localStorage.getItem("wardenSolitarySave")||JSON.stringify(blankSave));
@@ -41,6 +34,7 @@ let keys={},enemies=[],bullets=[],drops=[];
 let running=false,paused=false,inBoss=false,wave=1,kills=0,neededKills=20,message="";
 let boss=null;
 let joy={active:false,x:0,y:0,sx:0,sy:0};
+let batonSwing=0;
 
 let player={
   x:innerWidth/2,y:innerHeight/2,
@@ -64,8 +58,8 @@ function applyStats(){
     player.damage=12+save.shivLevel*5;
     player.attackSpeed=20;
   }else{
-    player.damage=9+save.batonLevel*4;
-    player.attackSpeed=26;
+    player.damage=13+save.batonLevel*5;
+    player.attackSpeed=24;
   }
 }
 
@@ -114,15 +108,12 @@ function spawnBoss(){
   inBoss=true;
   message="Boss: Baton Guard";
   boss={
-    x:innerWidth/2,
-    y:90,
-    w:46,h:58,
-    hp:450,maxHp:450,
-    speed:1.45,
-    damage:14,
-    angle:0,
-    batonRange:62,
-    swingTimer:0
+    x:innerWidth/2,y:90,w:50,h:64,
+    hp:750,maxHp:750,
+    speed:1.9,damage:16,
+    angle:0,batonRange:70,
+    phase75:false,phase50:false,phase25:false,
+    specialTimer:0,specialMode:""
   };
 }
 
@@ -141,6 +132,8 @@ function update(){
   player.y+=my*player.speed;
   player.x=Math.max(24,Math.min(innerWidth-24,player.x));
   player.y=Math.max(34,Math.min(innerHeight-24,player.y));
+
+  if(batonSwing>0)batonSwing--;
 
   player.attackTimer--;
   if(player.attackTimer<=0){attack();player.attackTimer=player.attackSpeed}
@@ -185,27 +178,36 @@ function updateEnemies(){
 }
 
 function updateBoss(){
+  let hpPct=boss.hp/boss.maxHp;
+
+  if(hpPct<=.75&&!boss.phase75){boss.phase75=true;bossSpecial("RAGE SPIN");}
+  if(hpPct<=.50&&!boss.phase50){boss.phase50=true;boss.speed+=.35;boss.batonRange+=12;bossSpecial("BATON RUSH");}
+  if(hpPct<=.25&&!boss.phase25){boss.phase25=true;boss.speed+=.45;boss.damage+=6;bossSpecial("LAST STAND");}
+
   let a=Math.atan2(player.y-boss.y,player.x-boss.x);
   boss.x+=Math.cos(a)*boss.speed;
   boss.y+=Math.sin(a)*boss.speed;
-  boss.angle+=.12;
 
-  if(dist(player,boss)<38){
-    player.hp-=boss.damage*.045;
+  let spinSpeed=boss.specialTimer>0?.28:.14;
+  boss.angle+=spinSpeed;
+  if(boss.specialTimer>0)boss.specialTimer--;
+
+  if(dist(player,boss)<40){
+    player.hp-=boss.damage*.05;
   }
 
   let batonX=boss.x+Math.cos(boss.angle)*boss.batonRange;
   let batonY=boss.y+Math.sin(boss.angle)*boss.batonRange;
 
-  if(Math.hypot(player.x-batonX,player.y-batonY)<28){
-    player.hp-=.85;
+  if(Math.hypot(player.x-batonX,player.y-batonY)<30){
+    player.hp-=1.25;
     let push=Math.atan2(player.y-batonY,player.x-batonX);
-    player.x+=Math.cos(push)*4;
-    player.y+=Math.sin(push)*4;
+    player.x+=Math.cos(push)*7;
+    player.y+=Math.sin(push)*7;
   }
 
   for(let b of bullets){
-    if(!b.dead&&Math.hypot(b.x-boss.x,b.y-boss.y)<38){
+    if(!b.dead&&Math.hypot(b.x-boss.x,b.y-boss.y)<40){
       boss.hp-=b.damage;
       b.dead=true;
     }
@@ -224,11 +226,16 @@ function updateBoss(){
     menu.innerHTML=`
       <h1>Solitary Cleared</h1>
       <p>You beat the Baton Guard.</p>
-      <p>The baton can now be purchased in your cell.</p>
+      <p>The baton is now available in your cell weapons menu.</p>
       <p>Contraband earned: ${player.contraband+20}</p>
       <button onclick="location.reload()">Back to Cell</button>
     `;
   }
+}
+
+function bossSpecial(text){
+  message=text;
+  boss.specialTimer=150;
 }
 
 function hitTargets(list){
@@ -253,15 +260,26 @@ function throwShiv(){
   if(inBoss&&boss){let d=dist(player,boss);if(d<best){best=d;target=boss}}
   if(!target)return;
   let a=Math.atan2(target.y-player.y,target.x-player.x);
-  bullets.push({x:player.x,y:player.y,r:5,vx:Math.cos(a)*9,vy:Math.sin(a)*9,damage:player.damage,life:70});
+  bullets.push({x:player.x,y:player.y,r:5,vx:Math.cos(a)*10,vy:Math.sin(a)*10,damage:player.damage,life:70,angle:a});
 }
 
 function swingBaton(){
-  let range=55+save.batonLevel*5;
+  batonSwing=10;
+  let range=75+save.batonLevel*8;
   for(let e of enemies){
-    if(dist(player,e)<range)e.hp-=player.damage;
+    if(dist(player,e)<range){
+      e.hp-=player.damage;
+      let push=Math.atan2(e.y-player.y,e.x-player.x);
+      e.x+=Math.cos(push)*(18+save.batonLevel*4);
+      e.y+=Math.sin(push)*(18+save.batonLevel*4);
+    }
   }
-  if(inBoss&&boss&&dist(player,boss)<range)boss.hp-=player.damage;
+  if(inBoss&&boss&&dist(player,boss)<range){
+    boss.hp-=player.damage;
+    let push=Math.atan2(boss.y-player.y,boss.x-player.x);
+    boss.x+=Math.cos(push)*8;
+    boss.y+=Math.sin(push)*8;
+  }
   message="Baton swing!";
 }
 
@@ -345,9 +363,7 @@ function addUpgrade(name,text,id,baseCost){
   cellList.appendChild(div);
 }
 
-function addWeaponUpgrade(name,text,id,baseCost){
-  addUpgrade(name,text,id,baseCost);
-}
+function addWeaponUpgrade(name,text,id,baseCost){addUpgrade(name,text,id,baseCost)}
 
 function showWeapons(){
   cell.classList.add("hidden");
@@ -361,11 +377,6 @@ function renderWeapons(){
 
   if(save.batonUnlocked){
     weaponCard("Baton","Short-range swing. Hits groups and knocks guards back.","baton",save.batonPurchased,save.batonLevel,60);
-  }else{
-    let d=document.createElement("div");
-    d.className="card locked";
-    d.innerHTML="<h2>Baton</h2><p>Defeat the Baton Guard in Solitary to unlock.</p>";
-    weaponList.appendChild(d);
   }
 }
 
@@ -422,7 +433,7 @@ function draw(){
   drawPlayer();
   for(let e of enemies)drawEnemy(e);
   if(boss)drawBoss();
-  for(let b of bullets)drawBullet(b);
+  for(let b of bullets)drawShiv(b);
   for(let d of drops)drawContraband(d);
 
   ui.innerHTML=`HP: ${Math.ceil(player.hp)} / ${player.maxHp}<br>
@@ -469,6 +480,20 @@ function drawPlayer(){
   ctx.fillStyle="#111";
   ctx.fillRect(player.x-5,player.y-20,3,3);
   ctx.fillRect(player.x+4,player.y-20,3,3);
+
+  if(player.weapon==="baton"){
+    ctx.strokeStyle="#ddd";
+    ctx.lineWidth=5;
+    ctx.beginPath();
+    if(batonSwing>0){
+      ctx.arc(player.x,player.y,50,0,Math.PI*2);
+    }else{
+      ctx.moveTo(player.x+12,player.y);
+      ctx.lineTo(player.x+42,player.y+8);
+    }
+    ctx.stroke();
+    ctx.lineWidth=1;
+  }
 }
 
 function drawEnemy(e){
@@ -486,8 +511,8 @@ function drawBoss(){
 
   let bx=boss.x+Math.cos(boss.angle)*boss.batonRange;
   let by=boss.y+Math.sin(boss.angle)*boss.batonRange;
-  ctx.strokeStyle="#ddd";
-  ctx.lineWidth=7;
+  ctx.strokeStyle=boss.specialTimer>0?"#ffdd57":"#ddd";
+  ctx.lineWidth=boss.specialTimer>0?10:7;
   ctx.beginPath();
   ctx.moveTo(boss.x,boss.y);
   ctx.lineTo(bx,by);
@@ -500,9 +525,21 @@ function drawBoss(){
   ctx.fillRect(20,40,(innerWidth-40)*(boss.hp/boss.maxHp),14);
 }
 
-function drawBullet(b){
-  ctx.fillStyle="#ffd166";
-  ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+function drawShiv(b){
+  ctx.save();
+  ctx.translate(b.x,b.y);
+  ctx.rotate(b.angle||0);
+  ctx.fillStyle="#cfd8dc";
+  ctx.beginPath();
+  ctx.moveTo(12,0);
+  ctx.lineTo(-6,-4);
+  ctx.lineTo(-3,0);
+  ctx.lineTo(-6,4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle="#5d4037";
+  ctx.fillRect(-12,-3,7,6);
+  ctx.restore();
 }
 
 function drawContraband(d){
