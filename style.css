@@ -1,12 +1,11 @@
 body{margin:0;overflow:hidden;background:#111;color:white;font-family:Arial,sans-serif}
-canvas{display:block;background:#252525}
-#ui{position:fixed;top:10px;left:10px;font-size:17px;text-shadow:2px 2px #000;z-index:2}
+canvas{display:block;background:#222}
+#ui{position:fixed;top:10px;left:10px;font-size:16px;text-shadow:2px 2px #000;z-index:2}
 #pauseBtn{position:fixed;top:10px;right:10px;z-index:4;font-size:18px;padding:10px 14px}
 .screen{position:fixed;inset:0;background:rgba(10,10,10,.94);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;z-index:5;padding:20px;overflow:auto}
 .hidden{display:none}
-button{font-size:20px;padding:12px 18px;margin:8px;border:0;border-radius:12px;background:#f6a623;font-weight:bold}
-.card{background:#222;border:2px solid #555;border-radius:14px;padding:14px;margin:8px;max-width:340px}
+button{font-size:19px;padding:11px 16px;margin:7px;border:0;border-radius:12px;background:#f6a623;font-weight:bold}
+.card{background:#222;border:2px solid #555;border-radius:14px;padding:14px;margin:8px;max-width:360px}
 .locked{opacity:.45}
-#journalText{max-width:420px;text-align:left;line-height:1.45}
-#stickBase{position:fixed;left:25px;bottom:25px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2);z-index:4;display:none}
+#stickBase{position:fixed;left:25px;bottom:25px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.22);z-index:4;display:none}
 #stickKnob{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:#f6a623}
